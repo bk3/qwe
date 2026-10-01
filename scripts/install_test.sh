@@ -5,6 +5,13 @@ repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 tmp=$(mktemp -d)
 server_pid=
 cleanup() {
+    test_status=$?
+    if [ "$test_status" -ne 0 ]; then
+        printf 'Installer test failed (exit %s); captured output:\n' "$test_status" >&2
+        for log in output failure latest-output server.log; do
+            if [ -f "$tmp/$log" ]; then printf '\n%s:\n' "$log" >&2; cat "$tmp/$log" >&2; fi
+        done
+    fi
     if [ -n "$server_pid" ]; then kill "$server_pid" 2>/dev/null || :; wait "$server_pid" 2>/dev/null || :; fi
     rm -rf "$tmp"
 }
@@ -44,7 +51,7 @@ while [ ! -f "$tmp/port" ]; do
     sleep 0.1
 done
 base=http://127.0.0.1:$(cat "$tmp/port")/releases
-QWE_INSTALL_DIR="$tmp/custom bin" QWE_VERSION=v0.0.0 QWE_RELEASE_BASE_URL="$base" sh "$repo/scripts/install.sh" > "$tmp/output"
+QWE_INSTALL_DIR="$tmp/custom bin" QWE_VERSION=v0.0.0 QWE_RELEASE_BASE_URL="$base" sh "$repo/scripts/install.sh" > "$tmp/output" 2>&1
 [ "$("$tmp/custom bin/qwe" --version)" = 'qwe v0.0.0' ]
 [ -x "$tmp/custom bin/qwe" ]
 cp "$tmp/custom bin/qwe" "$tmp/existing"
@@ -55,7 +62,7 @@ if QWE_INSTALL_DIR="$tmp/custom bin" QWE_VERSION=v0.0.0 QWE_RELEASE_BASE_URL="$b
 fi
 cmp "$tmp/existing" "$tmp/custom bin/qwe"
 awk '/checksum mismatch/ { found=1 } END { exit !found }' "$tmp/failure"
-QWE_INSTALL_DIR="$tmp/latest bin" QWE_RELEASE_BASE_URL="$base" sh "$repo/scripts/install.sh" > "$tmp/latest-output"
+QWE_INSTALL_DIR="$tmp/latest bin" QWE_RELEASE_BASE_URL="$base" sh "$repo/scripts/install.sh" > "$tmp/latest-output" 2>&1
 [ "$("$tmp/latest bin/qwe" --version)" = 'qwe v0.0.0' ]
 [ -z "$(find "$tmp/custom bin" "$tmp/latest bin" -name '.qwe-install.*' -print)" ]
 printf 'Installer tests passed (pinned release, latest, spaces, checksum rejection, atomic preservation, cleanup).\n'
