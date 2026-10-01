@@ -47,7 +47,8 @@ server_pid=$!
 attempt=0
 while [ ! -f "$tmp/port" ]; do
     attempt=$((attempt + 1))
-    [ "$attempt" -lt 50 ] || { cat "$tmp/server.log" >&2; exit 1; }
+    kill -0 "$server_pid" 2>/dev/null || { printf 'Fixture server exited before becoming ready.\n' >&2; exit 1; }
+    [ "$attempt" -lt 300 ] || { printf 'Fixture server did not become ready within 30 seconds.\n' >&2; exit 1; }
     sleep 0.1
 done
 base=http://127.0.0.1:$(cat "$tmp/port")/releases
