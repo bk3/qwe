@@ -13,7 +13,7 @@ A command is simply an executable `~/.config/qwe/<name>/run`. No registry or man
 
 ## Install and get started
 
-Install from this checkout now (Go 1.22 or newer):
+Install from this checkout now (Go 1.24 or newer; a current supported release is recommended):
 
 ```sh
 mkdir -p "$HOME/.local/bin"
