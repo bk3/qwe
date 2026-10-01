@@ -29,3 +29,18 @@ A small, dependency-free Go CLI for personal scripts on Linux and macOS. A comma
 Run `go test ./...`, race tests, `go vet ./...`, shell syntax checks, installer smoke tests with local HTTP artifacts, and cross-build all four targets. Exercise the binary end-to-end using an isolated command root. CI repeats tests on Linux and macOS.
 
 Deliver the separate plan, complete source, passing checks, README, installer, release workflow, and a working local binary. Release publication requires pushing the implementation and a version tag; do not claim the public curl installer works before those assets exist. Publishing a release is separate from building the ready-to-use local tool.
+
+## CLI lifecycle additions
+
+- `qwe uninstall` confirms the exact running executable path and removes only that binary. Personal scripts, dotfiles, shell configuration, and installation directories are kept. Resolve executable symlinks and verify the file has not been replaced since the prompt.
+- `qwe upgrade` resolves the latest stable GitHub release, shows old/new versions and the exact executable path, then asks for confirmation. There is no confirmation bypass. Already-current installations require no changes.
+- Download the architecture-specific asset and SHA-256 manifest. Validate the checksum and executable version before an atomic replacement staged in the same directory. Clean staging files and preserve the current installation on failure.
+- Public GitHub releases use the Go HTTP client; private releases use existing authenticated GitHub CLI access. Keep credential values and remote error bodies out of diagnostics.
+- Test explicit confirmation, default cancellation, actual self-removal, script preservation, unchanged-file checks, successful replacement, checksum/version failures, response limits, and authenticated private downloads. Reserve the two new names and document their availability separately from v0.0.1.
+
+## Direct editor commands
+
+- `qwe code [name]` and `qwe vim [name]` execute the user's PATH-resolved binary with the configured root or named command directory as one argument. Preserve cwd, environment, terminal streams, signals, and editor exit status.
+- Report an actionable error if the chosen executable is unavailable. Do not interpret shell aliases or use `VISUAL`/`EDITOR` for these explicit commands.
+- Honor `QWE_ROOT` and symlinked dotfiles. Create a missing root only after confirming the executable is available. Never create a missing named command directory, and allow opening existing folders for repair even without a valid entrypoint.
+- Reserve both names; test root/folder selection, paths with spaces, missing executables, malformed or missing command folders, exit status, and preservation of the lifecycle additions.

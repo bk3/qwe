@@ -34,6 +34,8 @@ curl -fsSL https://raw.githubusercontent.com/bk3/qwe/main/scripts/install.sh | s
 
 It installs to `~/.local/bin`, verifies the release's SHA-256 checksum, checks that the binary runs, and atomically replaces any existing binary. It supports Linux and macOS on amd64 and arm64. It requires `curl` or `wget` and `sha256sum` or `shasum`. It prints a PATH notice when needed and never modifies shell configuration. Checksums protect against corrupt downloads; the installer and release assets come from the same trusted repository.
 
+The curl installer requires publicly accessible release assets. If the repository is private, use authenticated GitHub Release downloads (for example, `gh release download v0.0.2 --repo bk3/qwe`) or install from an authenticated source checkout. Keep the matching binary for your platform, verify its SHA-256 checksum against `checksums.txt`, and place it on PATH.
+
 Pin a release or choose another destination:
 
 ```sh
@@ -55,6 +57,10 @@ curl -fsSL https://raw.githubusercontent.com/bk3/qwe/main/scripts/install.sh |
 | `qwe list` | Print runnable commands alphabetically, one per line. |
 | `qwe which <name>` | Print the absolute command directory. |
 | `qwe edit <name>` | Open the command directory with `VISUAL`, falling back to `EDITOR`. |
+| `qwe code [name]` | Open the command root or a named command folder using `code` on PATH. |
+| `qwe vim [name]` | Open the command root or a named command folder using `vim` on PATH. |
+| `qwe upgrade` | Confirm and replace the running CLI with the latest stable release. |
+| `qwe uninstall` | Confirm and remove the running CLI executable, keeping personal scripts. |
 | `qwe help` / `qwe --help` | Show usage. |
 | `qwe version` / `qwe --version` | Show the build version. |
 
@@ -68,6 +74,36 @@ qwe edit hello
 ```
 
 Editor arguments support quoting, but do not undergo shell expansion or evaluation. If neither `VISUAL` nor `EDITOR` is configured, `qwe edit` reports how to set one.
+
+Open all commands or an individual command directly:
+
+```sh
+qwe code           # Open ~/.config/qwe in the editor providing `code`
+qwe code hello     # Open ~/.config/qwe/hello
+qwe vim            # Open the command root in Vim
+qwe vim hello      # Open the hello folder in Vim
+```
+
+These commands use the actual `code` or `vim` executable on PATH, independently of `VISUAL` and `EDITOR`. `code` can be provided by VS Code, Cursor, or another editor. If it is unavailable, qwe reports an error explaining that the executable must be installed or its shell command enabled. Shell aliases and functions are not executables on PATH.
+
+Both commands honor `QWE_ROOT`, including symlinked dotfiles roots. Opening the root creates it if needed; opening a named command requires an existing directory. A command folder can be opened even if its `run` entrypoint is missing or broken. `code` and `vim` are reserved built-in names, available starting in v0.0.2.
+
+### Upgrade and uninstall
+
+```sh
+qwe upgrade
+qwe uninstall
+```
+
+Both commands show exactly which executable will change and require `y` or `yes` at a `[y/N]` prompt. Enter, EOF, and other responses cancel. There is no `--yes` bypass for these commands. `upgrade` shows the installed and latest versions before confirmation; if the installed version is already current or newer, it exits without changing anything. Development builds can install the latest release after confirmation.
+
+Upgrade downloads the matching Linux/macOS asset, verifies its SHA-256 checksum and `--version` output, then replaces the executable atomically in its current directory. Failed downloads or validation keep the existing installation. It updates custom installation paths too, without relying on `QWE_INSTALL_DIR`, and requires permission to write to the executable's directory.
+
+For private GitHub releases, install and authenticate [GitHub CLI](https://cli.github.com/) with repository access (`gh auth login`). Upgrade uses that authentication when the release is unavailable anonymously. Public releases work without GitHub CLI.
+
+Uninstall removes the running executable, including its resolved target when invoked through a symlink. Your command root, dotfiles, other copies of the CLI, shell configuration, and any invocation symlink remain untouched. It does not recursively delete installation directories. For package-manager installations, use the package manager to remove its own records and links.
+
+`upgrade` and `uninstall` are reserved built-in names, available starting in v0.0.2. When upgrading from v0.0.1, reinstall the newer release first: v0.0.1 does not include an `upgrade` command.
 
 ## Write a command
 

@@ -14,6 +14,10 @@ Usage:
   qwe list                            List runnable commands
   qwe which <name>                    Print the command directory
   qwe edit <name>                     Open the directory in VISUAL or EDITOR
+  qwe code [name]                     Open the root or command folder using code
+  qwe vim [name]                      Open the root or command folder using vim
+  qwe upgrade                         Upgrade to the latest release after confirmation
+  qwe uninstall                       Remove this CLI after confirmation (keep scripts)
   qwe version                         Print the version
   qwe help                            Show this help
 
@@ -32,6 +36,23 @@ func Run(args []string, version string) error {
 		return nil
 	}
 	switch name {
+	case "code", "vim":
+		if len(rest) > 1 {
+			return fmt.Errorf("usage: qwe %s [name]", name)
+		}
+		return openFolder(name, rest)
+	case "uninstall", "upgrade":
+		if len(rest) != 0 {
+			return fmt.Errorf("usage: qwe %s (confirmation required)", name)
+		}
+		path, info, err := installedExecutable()
+		if err != nil {
+			return err
+		}
+		if name == "uninstall" {
+			return uninstall(path, info, os.Stdin, os.Stdout, os.Stderr)
+		}
+		return upgrade(path, info, version, newReleaseSource(), os.Stdin, os.Stdout, os.Stderr)
 	case "help", "--help", "-h":
 		if len(rest) != 0 {
 			return fmt.Errorf("usage: qwe help")

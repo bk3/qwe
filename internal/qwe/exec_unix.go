@@ -51,3 +51,43 @@ func edit(dir string) error {
 	}
 	return nil
 }
+
+func openFolder(program string, names []string) error {
+	path, err := exec.LookPath(program)
+	if err != nil {
+		return fmt.Errorf("%s is unavailable on PATH; install it or enable its shell command", program)
+	}
+	var dir string
+	if len(names) == 0 {
+		dir, err = Root()
+		if err != nil {
+			return err
+		}
+		// Opening the root also works before the first command is created. Check
+		// editor availability first so a missing editor causes no filesystem writes.
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("prepare qwe root: %w", err)
+		}
+	} else {
+		_, dir, err = commandPath(names[0])
+		if err != nil {
+			return err
+		}
+		info, err := os.Stat(dir)
+		if os.IsNotExist(err) {
+			return fmt.Errorf("command %q does not exist", names[0])
+		}
+		if err != nil {
+			return fmt.Errorf("inspect command folder: %w", err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("command %q is not a directory", names[0])
+		}
+		// Opening a command must work even when run is broken or missing, so the
+		// user can repair it. Execution validation is intentionally unnecessary.
+	}
+	if err := syscall.Exec(path, []string{program, dir}, os.Environ()); err != nil {
+		return fmt.Errorf("open folder with %s: %w", program, err)
+	}
+	return nil
+}

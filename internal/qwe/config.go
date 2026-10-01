@@ -8,7 +8,7 @@ import (
 )
 
 var validName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
-var reserved = map[string]bool{"create": true, "delete": true, "list": true, "edit": true, "which": true, "help": true, "version": true}
+var reserved = map[string]bool{"create": true, "delete": true, "list": true, "edit": true, "which": true, "help": true, "version": true, "uninstall": true, "upgrade": true, "code": true, "vim": true}
 
 func ValidateName(name string) error {
 	if !validName.MatchString(name) {
