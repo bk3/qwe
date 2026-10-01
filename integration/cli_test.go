@@ -106,6 +106,17 @@ func assertError(t *testing.T, r result) {
 	}
 }
 
+// macOS exposes temporary directories through /var -> /private/var. A child's
+// getcwd (and shell PWD) may use the physical path even when cmd.Dir used a link.
+func physicalPath(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
+}
+
 func TestExecutionPreservesProcessContract(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "commands")
 	cwd := t.TempDir()
@@ -117,7 +128,7 @@ printf 'child stderr\n' >&2`)
 	args := []string{"inspect", "--help", "--runtime", "two words", "", "$(touch should-not-exist)", "a'b\"c", "--"}
 	r := invoke(t, root, cwd, "stdin payload\n", []string{"QWE_COMMAND_DIR=wrong", "QWE_TEST_VALUE=inherited value"}, args...)
 	assertOK(t, r)
-	want := fmt.Sprintf("cwd=%s\nroot=%s\ndir=%s\ninherited=inherited value\n", cwd, root, dir)
+	want := fmt.Sprintf("cwd=%s\nroot=%s\ndir=%s\ninherited=inherited value\n", physicalPath(t, cwd), root, dir)
 	for _, arg := range args[1:] {
 		want += "arg=<" + arg + ">\n"
 	}
@@ -135,7 +146,7 @@ func TestRelativeRootAndChildExit(t *testing.T) {
 	root := filepath.Join(cwd, "commands")
 	command(t, root, "status", `printf '%s\n' "$QWE_ROOT"; exit 37`)
 	r := invoke(t, "commands", cwd, "", nil, "status")
-	if r.code != 37 || r.stdout != root+"\n" || r.stderr != "" {
+	if r.code != 37 || r.stdout != physicalPath(t, root)+"\n" || r.stderr != "" {
 		t.Fatalf("unexpected result: %+v", r)
 	}
 }
@@ -278,7 +289,7 @@ func TestWhichAndSymlinkedRoot(t *testing.T) {
 	assertOK(t, r)
 	path := strings.TrimSuffix(r.stdout, "\n")
 	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil || resolved != filepath.Join(realRoot, "hello") {
+	if err != nil || resolved != physicalPath(t, filepath.Join(realRoot, "hello")) {
 		t.Fatalf("which path=%q resolved=%q err=%v", path, resolved, err)
 	}
 }
