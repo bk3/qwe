@@ -60,7 +60,7 @@ console.log("cwd:", process.cwd());
 console.log("args:", args);
 `
 	case "ts":
-		name, invocation = "script.ts", `tsx "$DIR/script.ts"`
+		name, invocation = "script.ts", `npx tsx "$DIR/script.ts"`
 		content = `const args: string[] = process.argv.slice(2);
 
 console.log("cwd:", process.cwd());

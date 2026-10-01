@@ -15,14 +15,15 @@ Usage:
   qwe which <name>                    Print the command directory
   qwe edit <name>                     Open the directory in VISUAL or EDITOR
   qwe code [name]                     Open the root or command folder using code
-  qwe vim [name]                      Open the root or command folder using vim
+  qwe vim [name]                      Open the root or command folder using nvim, falling back to vim
   qwe upgrade                         Upgrade to the latest release after confirmation
   qwe uninstall                       Remove this CLI after confirmation (keep scripts)
   qwe version                         Print the version
   qwe help                            Show this help
 
-Templates: bash, node, ts (installed tsx), go, python.
-Root: $QWE_ROOT or ~/.config/qwe. Runtimes are installed separately.
+Templates: bash, node, ts (npx tsx), go, python.
+Root: $QWE_ROOT or ~/.config/qwe. Shared script variables: <root>/.env.
+Runtimes are installed separately. Completion messages go to stderr.
 `
 
 func Run(args []string, version string) error {

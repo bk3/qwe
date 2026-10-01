@@ -133,7 +133,7 @@ printf 'child stderr\n' >&2`)
 		want += "arg=<" + arg + ">\n"
 	}
 	want += "stdin payload\n"
-	if r.stdout != want || r.stderr != "child stderr\n" {
+	if r.stdout != want || r.stderr != "child stderr\nqwe: Command \"inspect\" completed successfully.\n" {
 		t.Fatalf("stdout=%q stderr=%q; want stdout=%q", r.stdout, r.stderr, want)
 	}
 	if _, err := os.Stat(filepath.Join(cwd, "should-not-exist")); !os.IsNotExist(err) {
@@ -146,7 +146,7 @@ func TestRelativeRootAndChildExit(t *testing.T) {
 	root := filepath.Join(cwd, "commands")
 	command(t, root, "status", `printf '%s\n' "$QWE_ROOT"; exit 37`)
 	r := invoke(t, "commands", cwd, "", nil, "status")
-	if r.code != 37 || r.stdout != physicalPath(t, root)+"\n" || r.stderr != "" {
+	if r.code != 37 || r.stdout != physicalPath(t, root)+"\n" || !strings.Contains(r.stderr, "failed (exit status 37)") {
 		t.Fatalf("unexpected result: %+v", r)
 	}
 }
@@ -265,7 +265,7 @@ func TestListOnlyRunnableSorted(t *testing.T) {
 	absent := filepath.Join(t.TempDir(), "absent")
 	r = invoke(t, absent, "", "", nil, "list")
 	assertOK(t, r)
-	if r.stdout != "" {
+	if !strings.Contains(r.stdout, "No runnable commands exist.") {
 		t.Fatalf("missing root list: %q", r.stdout)
 	}
 	if _, err := os.Stat(absent); !os.IsNotExist(err) {

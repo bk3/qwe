@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -16,18 +17,12 @@ func execute(name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	env := make([]string, 0, len(os.Environ())+2)
-	for _, value := range os.Environ() {
-		if !strings.HasPrefix(value, "QWE_ROOT=") && !strings.HasPrefix(value, "QWE_COMMAND_DIR=") {
-			env = append(env, value)
-		}
+	env, err := commandEnvironment(root, dir)
+	if err != nil {
+		return err
 	}
-	env = append(env, "QWE_ROOT="+root, "QWE_COMMAND_DIR="+dir)
 	run := filepath.Join(dir, "run")
-	if err := syscall.Exec(run, append([]string{run}, args...), env); err != nil {
-		return fmt.Errorf("execute command %q: %w (entrypoint needs a valid shebang or executable binary)", name, err)
-	}
-	return nil
+	return runAttached(run, args, env, fmt.Sprintf("Command %q", name))
 }
 
 func edit(dir string) error {
@@ -46,15 +41,27 @@ func edit(dir string) error {
 	if err != nil {
 		return fmt.Errorf("find editor %q: %w", args[0], err)
 	}
-	if err := syscall.Exec(path, append(args, dir), os.Environ()); err != nil {
-		return fmt.Errorf("open editor: %w", err)
-	}
-	return nil
+	return runAttached(path, append(args[1:], dir), os.Environ(), "Editor")
 }
 
 func openFolder(program string, names []string) error {
-	path, err := exec.LookPath(program)
+	candidates := []string{program}
+	if program == "vim" {
+		candidates = []string{"nvim", "vim"}
+	}
+	var path string
+	var err error
+	for _, candidate := range candidates {
+		path, err = exec.LookPath(candidate)
+		if err == nil {
+			program = candidate
+			break
+		}
+	}
 	if err != nil {
+		if program == "vim" {
+			return fmt.Errorf("nvim and vim are unavailable on PATH; install Neovim or Vim")
+		}
 		return fmt.Errorf("%s is unavailable on PATH; install it or enable its shell command", program)
 	}
 	var dir string
@@ -65,8 +72,8 @@ func openFolder(program string, names []string) error {
 		}
 		// Opening the root also works before the first command is created. Check
 		// editor availability first so a missing editor causes no filesystem writes.
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("prepare qwe root: %w", err)
+		if err := prepareRoot(dir); err != nil {
+			return err
 		}
 	} else {
 		_, dir, err = commandPath(names[0])
@@ -86,8 +93,41 @@ func openFolder(program string, names []string) error {
 		// Opening a command must work even when run is broken or missing, so the
 		// user can repair it. Execution validation is intentionally unnecessary.
 	}
-	if err := syscall.Exec(path, []string{program, dir}, os.Environ()); err != nil {
-		return fmt.Errorf("open folder with %s: %w", program, err)
+	return runAttached(path, []string{dir}, os.Environ(), fmt.Sprintf("%s for %s", program, dir))
+}
+
+// Keep streams attached directly so interactive commands and pipelines work.
+// Forward signals sent specifically to qwe as well as terminal group signals.
+func runAttached(path string, args, env []string, description string) error {
+	cmd := exec.Command(path, args...)
+	cmd.Env = env
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	signals := make(chan os.Signal, 8)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT)
+	defer signal.Stop(signals)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start %s: %w", description, err)
 	}
-	return nil
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case sig := <-signals:
+				_ = cmd.Process.Signal(sig)
+			case <-done:
+				return
+			}
+		}
+	}()
+	err := cmd.Wait()
+	close(done)
+	if err == nil {
+		fmt.Fprintf(os.Stderr, "qwe: %s completed successfully.\n", description)
+		return nil
+	}
+	if exit, ok := err.(*exec.ExitError); ok {
+		fmt.Fprintf(os.Stderr, "qwe: %s failed (%s).\n", description, exit.ProcessState)
+		return exit
+	}
+	return fmt.Errorf("wait for %s: %w", description, err)
 }

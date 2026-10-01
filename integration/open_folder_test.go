@@ -48,7 +48,7 @@ func TestMissingDirectEditorsFailWithoutCreatingRoot(t *testing.T) {
 		root := filepath.Join(t.TempDir(), "missing-root")
 		r := invoke(t, root, "", "", []string{"PATH=" + t.TempDir()}, editor)
 		assertError(t, r)
-		if !strings.Contains(r.stderr, editor+" is unavailable on PATH") {
+		if !strings.Contains(r.stderr, "unavailable on PATH") {
 			t.Fatalf("missing executable error: %q", r.stderr)
 		}
 		if _, err := os.Stat(root); !os.IsNotExist(err) {
@@ -75,6 +75,25 @@ func TestDirectEditorsDefaultRootSymlinksAndExitStatus(t *testing.T) {
 		r = invoke(t, linked, "", "", env, editor)
 		if r.code != 37 || r.stdout != linked+"\n" {
 			t.Fatalf("symlink root/exit: %+v", r)
+		}
+	}
+}
+
+func TestVimPrefersNeovimAndDoesNotFallbackOnFailure(t *testing.T) {
+	for _, available := range []string{"both", "nvim-only"} {
+		tools, root := t.TempDir(), t.TempDir()
+		write(t, filepath.Join(tools, "nvim"), "#!/bin/sh\necho neovim\nexit 37\n", 0755)
+		if available == "both" {
+			write(t, filepath.Join(tools, "vim"), "#!/bin/sh\necho vim\n", 0755)
+		}
+		for _, args := range [][]string{{"vim"}, {"vim", "repair-me"}} {
+			if err := os.MkdirAll(filepath.Join(root, "repair-me"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			r := invoke(t, root, "", "", []string{"PATH=" + tools}, args...)
+			if r.code != 37 || r.stdout != "neovim\n" || !strings.Contains(r.stderr, "failed") {
+				t.Fatalf("%s %v: %+v", available, args, r)
+			}
 		}
 	}
 }

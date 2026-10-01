@@ -38,8 +38,8 @@ func create(name, runtime string) (err error) {
 	if err != nil {
 		return err
 	}
-	if err = os.MkdirAll(root, 0755); err != nil {
-		return fmt.Errorf("create root: %w", err)
+	if err = prepareRoot(root); err != nil {
+		return err
 	}
 	if err = os.Mkdir(dir, 0755); err != nil {
 		if os.IsExist(err) {
@@ -120,6 +120,7 @@ func list() error {
 	}
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
+		fmt.Fprintln(os.Stdout, "No runnable commands exist. Create one with: qwe create <name> --runtime bash")
 		return nil
 	}
 	if err != nil {
@@ -130,6 +131,10 @@ func list() error {
 		if _, _, err := entrypoint(item.Name()); err == nil {
 			names = append(names, item.Name())
 		}
+	}
+	if len(names) == 0 {
+		fmt.Fprintln(os.Stdout, "No runnable commands exist. Create one with: qwe create <name> --runtime bash")
+		return nil
 	}
 	sort.Strings(names)
 	for _, name := range names {

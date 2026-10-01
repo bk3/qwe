@@ -54,11 +54,11 @@ curl -fsSL https://raw.githubusercontent.com/bk3/qwe/main/scripts/install.sh |
 | `qwe create <name>` | Ask for a runtime in an interactive terminal. Use `--runtime` in automation. |
 | `qwe delete <name>` | Ask for confirmation, defaulting to no, then remove the entire command directory. |
 | `qwe delete <name> --yes` | Delete without prompting; `-y` also works. |
-| `qwe list` | Print runnable commands alphabetically, one per line. |
+| `qwe list` | Print runnable commands alphabetically, or explain that none exist. |
 | `qwe which <name>` | Print the absolute command directory. |
 | `qwe edit <name>` | Open the command directory with `VISUAL`, falling back to `EDITOR`. |
 | `qwe code [name]` | Open the command root or a named command folder using `code` on PATH. |
-| `qwe vim [name]` | Open the command root or a named command folder using `vim` on PATH. |
+| `qwe vim [name]` | Open the command root or a named command folder using `nvim` on PATH, falling back to `vim` if Neovim is unavailable. |
 | `qwe upgrade` | Confirm and replace the running CLI with the latest stable release. |
 | `qwe uninstall` | Confirm and remove the running CLI executable, keeping personal scripts. |
 | `qwe help` / `qwe --help` | Show usage. |
@@ -80,13 +80,13 @@ Open all commands or an individual command directly:
 ```sh
 qwe code           # Open ~/.config/qwe in the editor providing `code`
 qwe code hello     # Open ~/.config/qwe/hello
-qwe vim            # Open the command root in Vim
-qwe vim hello      # Open the hello folder in Vim
+qwe vim            # Open the command root in Neovim (or Vim)
+qwe vim hello      # Open the hello folder in Neovim (or Vim)
 ```
 
-These commands use the actual `code` or `vim` executable on PATH, independently of `VISUAL` and `EDITOR`. `code` can be provided by VS Code, Cursor, or another editor. If it is unavailable, qwe reports an error explaining that the executable must be installed or its shell command enabled. Shell aliases and functions are not executables on PATH.
+These commands use executables on PATH, independently of `VISUAL` and `EDITOR`. `qwe vim` tries `nvim` first, then `vim` if `nvim` is unavailable. A failing Neovim session reports its failure without launching Vim. `code` can be provided by VS Code, Cursor, or another editor. If it is unavailable, qwe reports an error explaining that the executable must be installed or its shell command enabled. Shell aliases and functions are not executables on PATH.
 
-Both commands honor `QWE_ROOT`, including symlinked dotfiles roots. Opening the root creates it if needed; opening a named command requires an existing directory. A command folder can be opened even if its `run` entrypoint is missing or broken. `code` and `vim` are reserved built-in names, available starting in v0.0.2.
+Both commands honor `QWE_ROOT`, including symlinked dotfiles roots. Opening the root creates it and prepares the shared `.env` if needed; opening a named command requires an existing directory. A command folder can be opened even if its `run` entrypoint is missing or broken. `code` and `vim` are reserved built-in names, available starting in v0.0.2.
 
 ### Upgrade and uninstall
 
@@ -142,11 +142,11 @@ The only contract is a regular, executable `run` file with a valid shebang or a 
 | --- | --- | --- |
 | `bash` | `script.sh` | Bash |
 | `node` | `script.js` | Node.js |
-| `ts` | `script.ts` | Node.js and installed `tsx` on PATH |
+| `ts` | `script.ts` | Node.js and npm (`npx tsx`) |
 | `go` | `main.go` | Go (`go run`) |
 | `python` | `script.py` | Python 3 |
 
-All generated `run` wrappers use Bash, so Bash is required alongside the selected runtime. Aliases include `js`/`javascript`, `typescript`, `golang`, and `py`/`python3`. Templates locate their own script files while preserving the caller's current directory. TypeScript invokes `tsx` directly: it does not use `npx` or download dependencies during execution. Install required runtimes yourself, or customize `run` to invoke your preferred environment. `qwe` does not install runtimes, packages, or virtual environments.
+All generated `run` wrappers use Bash, so Bash is required alongside the selected runtime. Aliases include `js`/`javascript`, `typescript`, `golang`, and `py`/`python3`. Templates locate their own script files while preserving the caller's current directory. TypeScript invokes `npx tsx`, which can download `tsx` if it is not already available. Install required runtimes yourself, or customize `run` to invoke your preferred environment. `qwe` does not install runtimes or virtual environments; TypeScript package resolution is handled by `npx`.
 
 ### Current directory and command resources
 
@@ -164,7 +164,28 @@ cat "$QWE_COMMAND_DIR/config.json"
 printf 'Project directory: %s\n' "$PWD"
 ```
 
-All other environment variables are inherited. `qwe` replaces any inherited `QWE_ROOT` and `QWE_COMMAND_DIR` with the resolved paths for the executed command.
+Every script also receives variables from `<root>/.env`; existing shell environment values take precedence, including explicitly empty values. `qwe` replaces `QWE_ROOT` and `QWE_COMMAND_DIR` with the resolved paths regardless of their values in the shell or `.env`.
+
+### Shared environment
+
+`qwe create` and opening the root with `qwe code` or `qwe vim` prepare `~/.config/qwe/.env` (or `$QWE_ROOT/.env`) without overwriting existing files. Newly created `.env` files have permissions `0600`. Edit this file to define values shared by all your commands:
+
+```dotenv
+API_TOKEN=your-token
+export PROJECT_NAME="my project"
+DATA_DIR='/path/with spaces'
+EMPTY_VALUE=
+```
+
+The file is loaded on every script invocation, so changes take effect immediately for both existing and newly created commands, in any runtime. A missing `.env` is allowed. Blank lines, comments, optional `export`, and single or double quoted values are supported. Double quotes support escapes such as `\n`, `\t`, `\\`, and `\"`; single quotes preserve literal text. Unquoted inline comments begin with whitespace followed by `#`. Variables and shell substitutions remain literal: the file is never executed as shell code. Malformed assignments report their line number and prevent the script from running without printing secret values.
+
+Access values through the runtime's normal environment API: `$API_TOKEN` in Bash, `process.env.API_TOKEN` in Node or TypeScript, `os.Getenv("API_TOKEN")` in Go, or `os.environ.get("API_TOKEN")` in Python. Built-in commands and editors use your shell environment; `.env` applies to scripts launched through `qwe`.
+
+For the default root, qwe adds `/qwe/.env` to `~/.config/.gitignore`, preserving existing rules. It also adds `/.env` to the command root's `.gitignore` so custom roots and roots symlinked into a dotfiles repository are covered. Existing tracked `.env` files must be untracked with `git rm --cached` if necessary.
+
+### Command feedback
+
+Built-in commands always print a result, prompt, or error. Empty or missing command roots report that no runnable commands exist. Scripts and editors print a completion or failure message to stderr after exiting, even if they produce no output themselves. Stdout stays available for command data and pipelines. qwe waits for scripts and editors as child processes, forwards interrupt and termination signals, and preserves their exit status.
 
 ## Storage and dotfiles
 

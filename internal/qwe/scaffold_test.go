@@ -59,8 +59,8 @@ func TestScaffoldFiles(t *testing.T) {
 			if !strings.HasPrefix(files[0].Content, "#!/usr/bin/env bash\n") || !strings.Contains(files[0].Content, ` "$@"`) {
 				t.Fatal("run must have a Bash shebang and preserve argument boundaries")
 			}
-			if strings.Contains(files[0].Content, "npx") {
-				t.Fatal("templates must not download runtimes")
+			if runtime == "ts" && !strings.Contains(files[0].Content, `exec npx tsx "$DIR/script.ts" "$@"`) {
+				t.Fatal("TypeScript wrapper must invoke npx tsx and forward script arguments")
 			}
 			if !strings.Contains(files[1].Content, "cwd:") || !strings.Contains(files[1].Content, "args:") {
 				t.Fatal("starter must demonstrate cwd and arguments")
@@ -70,7 +70,8 @@ func TestScaffoldFiles(t *testing.T) {
 }
 
 // Exercise the real wrappers with stub interpreters so every runtime can be
-// verified without requiring Node, tsx, Go, or Python to be installed.
+// verified without requiring Node, npm, tsx, Go, or Python to be installed.
+// Stubbing npx also prevents the TypeScript test from downloading packages.
 func TestScaffoldWrappers(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash is not installed")
@@ -107,9 +108,12 @@ func TestScaffoldWrappers(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				interpreter := map[string]string{"node": "node", "ts": "tsx", "go": "go", "python": "python3"}[runtime]
+				interpreter := map[string]string{"node": "node", "ts": "npx", "go": "go", "python": "python3"}[runtime]
 				if err := os.WriteFile(filepath.Join(binDir, interpreter), []byte(probe), 0755); err != nil {
 					t.Fatal(err)
+				}
+				if runtime == "ts" {
+					wantArgs = append(wantArgs, "tsx")
 				}
 				if runtime == "go" {
 					wantArgs = append(wantArgs, "run")
