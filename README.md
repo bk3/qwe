@@ -1,1 +1,179 @@
 # qwe
+
+Personal scripts, available from any directory. `qwe` is a small standalone CLI for Linux and macOS; your commands can use any language.
+
+```sh
+qwe create repo-summary --runtime bash
+qwe edit repo-summary
+cd ~/Code/my-project
+qwe repo-summary --dry-run
+```
+
+A command is simply an executable `~/.config/qwe/<name>/run`. No registry or manifest is required. `qwe` preserves your current directory, arguments, environment, terminal streams, exit status, and signals.
+
+## Install and get started
+
+Install from this checkout now (Go 1.22 or newer):
+
+```sh
+mkdir -p "$HOME/.local/bin"
+go build -trimpath -o "$HOME/.local/bin/qwe" ./cmd/qwe
+export PATH="$HOME/.local/bin:$PATH"
+qwe --version
+qwe create hello --runtime bash
+qwe hello one "two three"
+```
+
+The standalone installed binary needs no Go runtime. Add the PATH line to your shell configuration if you want it to persist across terminal sessions.
+
+Install the latest published release:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/bk3/qwe/main/scripts/install.sh | sh
+```
+
+It installs to `~/.local/bin`, verifies the release's SHA-256 checksum, checks that the binary runs, and atomically replaces any existing binary. It supports Linux and macOS on amd64 and arm64. It requires `curl` or `wget` and `sha256sum` or `shasum`. It prints a PATH notice when needed and never modifies shell configuration. Checksums protect against corrupt downloads; the installer and release assets come from the same trusted repository.
+
+Pin a release or choose another destination:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/bk3/qwe/main/scripts/install.sh |
+  QWE_VERSION=v0.1.0 QWE_INSTALL_DIR="$HOME/bin" sh
+```
+
+`QWE_VERSION` defaults to `latest`. `QWE_RELEASE_BASE_URL` overrides the release base URL for mirrors and local installer tests; its default is `https://github.com/bk3/qwe/releases`.
+
+## Commands
+
+| Command | Behavior |
+| --- | --- |
+| `qwe <name> [args...]` | Execute the command's `run` entrypoint, forwarding every argument unchanged. |
+| `qwe create <name> --runtime <runtime>` | Create an executable scaffold without overwriting existing files. |
+| `qwe create <name>` | Ask for a runtime in an interactive terminal. Use `--runtime` in automation. |
+| `qwe delete <name>` | Ask for confirmation, defaulting to no, then remove the entire command directory. |
+| `qwe delete <name> --yes` | Delete without prompting; `-y` also works. |
+| `qwe list` | Print runnable commands alphabetically, one per line. |
+| `qwe which <name>` | Print the absolute command directory. |
+| `qwe edit <name>` | Open the command directory with `VISUAL`, falling back to `EDITOR`. |
+| `qwe help` / `qwe --help` | Show usage. |
+| `qwe version` / `qwe --version` | Show the build version. |
+
+Built-in flags may appear before or after the command name. Script flags belong to the script and pass through untouched. Names use letters, digits, underscores, or hyphens and must start with a letter or digit. Built-in names are reserved.
+
+Configure your editor, including arguments if needed:
+
+```sh
+export EDITOR='code --wait'
+qwe edit hello
+```
+
+Editor arguments support quoting, but do not undergo shell expansion or evaluation. If neither `VISUAL` nor `EDITOR` is configured, `qwe edit` reports how to set one.
+
+## Write a command
+
+The scaffold separates the entrypoint from the script:
+
+```text
+~/.config/qwe/
+├── hello/
+│   ├── run
+│   └── script.sh
+└── repo-summary/
+    ├── run
+    ├── script.ts
+    └── config.json
+```
+
+Change `script.sh` or `script.ts` and run the command immediately. You can also write a single-file command directly:
+
+```sh
+mkdir -p "$HOME/.config/qwe/status"
+cat > "$HOME/.config/qwe/status/run" <<'SCRIPT'
+#!/bin/sh
+exec git status --short "$@"
+SCRIPT
+chmod +x "$HOME/.config/qwe/status/run"
+
+cd ~/Code/my-project
+qwe status
+```
+
+The only contract is a regular, executable `run` file with a valid shebang or a native executable. Everything else in the directory belongs to you. Commands execute with your user's permissions.
+
+### Runtime templates
+
+| `--runtime` | Script | Runtime required by the command |
+| --- | --- | --- |
+| `bash` | `script.sh` | Bash |
+| `node` | `script.js` | Node.js |
+| `ts` | `script.ts` | Node.js and installed `tsx` on PATH |
+| `go` | `main.go` | Go (`go run`) |
+| `python` | `script.py` | Python 3 |
+
+All generated `run` wrappers use Bash, so Bash is required alongside the selected runtime. Aliases include `js`/`javascript`, `typescript`, `golang`, and `py`/`python3`. Templates locate their own script files while preserving the caller's current directory. TypeScript invokes `tsx` directly: it does not use `npx` or download dependencies during execution. Install required runtimes yourself, or customize `run` to invoke your preferred environment. `qwe` does not install runtimes, packages, or virtual environments.
+
+### Current directory and command resources
+
+If you run `qwe repo-summary` from `~/Code/my-project`, the script's working directory is `~/Code/my-project`. Arguments retain spaces and special characters, stdin/stdout/stderr connect directly to your terminal, and the command's exit code becomes `qwe`'s exit code.
+
+The script receives two environment variables:
+
+- `QWE_ROOT`: the absolute command root.
+- `QWE_COMMAND_DIR`: the absolute directory containing this command.
+
+Use `QWE_COMMAND_DIR` to read command-owned resources without changing the working directory:
+
+```sh
+cat "$QWE_COMMAND_DIR/config.json"
+printf 'Project directory: %s\n' "$PWD"
+```
+
+All other environment variables are inherited. `qwe` replaces any inherited `QWE_ROOT` and `QWE_COMMAND_DIR` with the resolved paths for the executed command.
+
+## Storage and dotfiles
+
+Commands default to `~/.config/qwe` on both macOS and Linux. Set `QWE_ROOT` to use a different root; relative values resolve against the directory where you invoke `qwe`:
+
+```sh
+QWE_ROOT=/tmp/my-commands qwe create example --runtime bash
+QWE_ROOT=/tmp/my-commands qwe example
+```
+
+Keep commands in a dotfiles repository by symlinking the root (move existing commands first):
+
+```sh
+mkdir -p "$HOME/dotfiles/qwe/commands" "$HOME/.config"
+ln -s "$HOME/dotfiles/qwe/commands" "$HOME/.config/qwe"
+```
+
+Symlinked command directories also work. Deleting a command that is a symlink removes only the link and preserves its target. Deleting a normal command directory removes all of its contents after confirmation. Invalid names and traversal paths are rejected.
+
+The CLI binary stays separate from your scripts, normally at `~/.local/bin/qwe`.
+
+## Develop and release
+
+No third-party Go dependencies are required:
+
+```sh
+go test ./...
+go test -race ./...
+go vet ./...
+sh -n scripts/install.sh scripts/install_test.sh
+sh scripts/install_test.sh
+mkdir -p bin
+go build -o bin/qwe ./cmd/qwe
+```
+
+The installer integration test uses Python 3 to serve isolated HTTP fixtures; it verifies pinned/latest downloads, paths with spaces, checksum rejection, preservation of an existing installation, and staging cleanup. CI runs on Linux and macOS and cross-builds all four supported platform combinations.
+
+To publish a release after pushing the implementation, create and push a version tag such as `v0.1.0`. The release workflow tests the project, embeds the tag using `-X main.version`, builds with `CGO_ENABLED=0`, and publishes these GitHub Release assets:
+
+```text
+qwe-linux-amd64
+qwe-linux-arm64
+qwe-darwin-amd64
+qwe-darwin-arm64
+checksums.txt
+```
+
+Source builds show a development version unless you supply a version via linker flags. See [the implementation plan](QWE_IMPLEMENTATION_PLAN.md) for the refined scope and decisions; [the kickoff](QWE_PROJECT_KICKOFF.md) preserves the original brainstorming.
